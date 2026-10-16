@@ -16,6 +16,7 @@ public partial class QuickPanelWindow : Window
     {
         DataContext = viewModel;
         InitializeComponent();
+        ImeCandidatePlacement.Attach(this);
         Loaded += OnLoaded;
         DpiChanged += OnDpiChanged;
         AppThemeManager.ThemeChanged += OnThemeChanged;

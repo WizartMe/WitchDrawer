@@ -2,6 +2,7 @@ using WitchDrawer.Core.Localization;
 using System.IO;
 using System.Windows;
 using WitchDrawer.Core.Services;
+using WitchDrawer.App.Infrastructure;
 
 namespace WitchDrawer.App.Features.ItemContextMenu;
 
@@ -10,6 +11,7 @@ public partial class FileRenameWindow : Window
     internal FileRenameWindow(string name, bool isMappingBox, bool isDirectory = false)
     {
         InitializeComponent();
+        ImeCandidatePlacement.Attach(this);
         Title = isMappingBox ? Strings.Get("RenameReference") : isDirectory ? Strings.Get("RenameFolder") : Strings.Get("RenameFile");
         Description.Text = isMappingBox ? Strings.Get("OnlyTheReferenceNameChangesTheSourceFileStays")
             : isDirectory ? Strings.Get("EnterANewFolderName") : Strings.Get("EnterANewNameIncludingTheFileExtension");

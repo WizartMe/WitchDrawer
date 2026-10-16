@@ -187,6 +187,8 @@ public partial class DesktopBoxWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
+        ImeCandidatePlacement.Attach(this);
+
         var handle = new WindowInteropHelper(this).Handle;
         _nativeWindow = new DesktopToolWindow(handle);
         if (DesktopWindowLayer.IsEnabled)
