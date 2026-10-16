@@ -1,5 +1,6 @@
 using WitchDrawer.App.Localization;
 using WitchDrawer.Core.Localization;
+using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WitchDrawer.App.Infrastructure;
@@ -62,14 +63,7 @@ public sealed class UpdateViewModel : LocalizedObservableObject
         }
     }
 
-    public string CurrentVersionText
-    {
-        get
-        {
-            var version = GetCurrentVersion();
-            return $"v{version.Major}.{version.Minor}.{version.Build}";
-        }
-    }
+    public string CurrentVersionText => $"v{GetCurrentVersionText()}";
 
     private async Task CheckForUpdateAsync()
     {
@@ -175,10 +169,32 @@ public sealed class UpdateViewModel : LocalizedObservableObject
         }
     }
 
-    internal static Version GetCurrentVersion()
+    // 版本信息来自程序集元数据，运行期不会变化：缓存下来，避免界面绑定与日志导出反复走反射。
+    private static readonly Version CurrentAssemblyVersion =
+        typeof(UpdateViewModel).Assembly.GetName().Version ?? new Version(1, 0, 0);
+
+    private static readonly string? CurrentInformationalVersion =
+        typeof(UpdateViewModel).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+
+    /// <summary>
+    /// 界面显示用的版本号：发布版形如 1.4.4；本地测试构建在 Directory.Build.props 里带
+    /// -test 后缀时一并显示，便于区分正在运行的构建；git 提交号不显示。
+    /// </summary>
+    internal static string GetCurrentVersionText()
     {
-        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-        var version = assembly.GetName().Version;
-        return version ?? new Version(1, 0, 0);
+        var version = CurrentAssemblyVersion;
+        var numeric = $"{version.Major}.{version.Minor}.{version.Build}";
+        if (string.IsNullOrWhiteSpace(CurrentInformationalVersion))
+        {
+            return numeric;
+        }
+
+        // 形如 "1.4.4-test+3f44124"：去掉构建元数据，保留数字版本与后缀。
+        var text = CurrentInformationalVersion.Split('+')[0];
+        return text.StartsWith(numeric, StringComparison.Ordinal) ? text : numeric;
     }
+
+    internal static Version GetCurrentVersion() => CurrentAssemblyVersion;
 }

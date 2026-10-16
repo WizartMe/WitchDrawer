@@ -83,7 +83,7 @@ public sealed class MaintenanceViewModel
             if (_logger is FileAppLogger fileLogger) await fileLogger.FlushAsync();
             var result = await _diagnosticLogExportService.ExportAsync(
                 destinationPath,
-                $"v{UpdateViewModel.GetCurrentVersion().ToString(3)}");
+                $"v{UpdateViewModel.GetCurrentVersionText()}");
             StatusText = Strings.Format("ExportedLogFiles", result.LogFileCount);
             LogInfoWithoutThrowing($"Diagnostic log export completed with {result.LogFileCount} log file(s).");
             return result;
