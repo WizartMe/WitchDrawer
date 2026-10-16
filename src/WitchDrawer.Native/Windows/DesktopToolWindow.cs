@@ -28,6 +28,8 @@ public sealed class DesktopToolWindow
     private const nint ExtendedStyleToolWindow = 0x00000080;
     private const nint ExtendedStyleNoActivate = 0x08000000;
     private const uint GetWindowOwner = 4;
+    private const uint GetWindowPrevious = 3;
+    private const uint GetWindowNext = 2;
     private const nint SystemCommandMask = 0xFFF0;
     private const nint SystemCommandMinimize = 0xF020;
 
@@ -238,16 +240,103 @@ public sealed class DesktopToolWindow
         return true;
     }
 
+    /// <summary>
+    /// 显示桌面（Win+D）后的桌面层修复：重新解析桌面宿主，并在宿主窗口压住盒子时把
+    /// 盒子抬回桌面表面之上。Windows 10 的桌面视图整体迁到 WorkerW 之上，沿用原有的
+    /// 无条件抬高处理；Windows 11 22H2/23H2 只在宿主确实位于盒子前面时修复。
+    /// </summary>
     public void RefreshDesktopHostForShowDesktop()
     {
         // Wallpaper/Explorer changes may migrate the view between Progman and
         // WorkerW. Re-resolve on the existing settled foreground event, without
         // polling, showing hidden boxes, or interrupting mouse ownership.
-        if (DesktopShellHost.UsesLegacyDesktopHost && !_desktopOwnershipSuspendedForInput)
+        if (_desktopOwnershipSuspendedForInput)
         {
-            TryAttachToDesktop();
-            RaiseAboveDesktopSurface();
+            return;
         }
+
+        TryAttachToDesktop();
+
+        if (DesktopShellHost.UsesLegacyDesktopHost)
+        {
+            RaiseAboveDesktopSurface();
+            return;
+        }
+
+        // 显示桌面时 Explorer 会把桌面视图宿主抬到盒子之上，盒子随即被遮盖；
+        // 宿主本来就位于盒子后面时不做任何窗口调整。
+        RaiseAboveDesktopSurfaceWhenCovered(
+            DesktopShellHost.ResolveDesktopViewHost(GetShellWindow()));
+    }
+
+    /// <summary>
+    /// 层修复：宿主窗口压住盒子时把盒子抬回桌面表面之上。只允许在宿主变化的明确边界调用
+    /// （Explorer 重建桌面、显示桌面激活），不要在 Z 序事件里反复调用——那会在用户点击
+    /// 过程中搬动窗口，打断点击并造成闪烁。Windows 10 旧路径由显示桌面前台事件处理。
+    /// </summary>
+    public bool RepairDesktopHostLayer()
+    {
+        // 属主挂起表示用户正在与盒子交互（点击/拖拽）：此时一律不动窗口。
+        if (DesktopShellHost.UsesLegacyDesktopHost || _desktopOwnershipSuspendedForInput)
+        {
+            return false;
+        }
+
+        return RaiseAboveDesktopSurfaceWhenCovered(
+            DesktopShellHost.ResolveDesktopViewHost(GetShellWindow()));
+    }
+
+    /// <summary>宿主压住盒子时才把盒子抬到桌面表面之上，避免 Z 序正常时出现多余跳动。</summary>
+    internal bool RaiseAboveDesktopSurfaceWhenCovered(nint host)
+    {
+        if (!IsAlive
+            || host == nint.Zero
+            || host == _handle
+            || !IsWindow(host)
+            || !IsWindowVisible(host)
+            || !PrecedesInZOrder(host, _handle))
+        {
+            return false;
+        }
+
+        InsertAboveDesktopHost(host, _handle);
+        return true;
+    }
+
+    /// <summary>
+    /// 把盒子插到桌面宿主正上方。正常状态下盒子本来就紧贴宿主上方，这样做与 Explorer 自己
+    /// 维护的层级一致；若把整窗跳到常规层顶部（HWND_TOP），Explorer 会在随后把宿主重新抬到
+    /// 盒子之上，导致部分盒子又被盖住。
+    /// </summary>
+    internal static void InsertAboveDesktopHost(nint host, nint handle)
+    {
+        var above = GetWindow(host, GetWindowPrevious);
+        var insertion = DesktopWindowLayer.ResolveInsertAbove(above);
+        SetWindowPos(handle, insertion, 0, 0, 0, 0,
+            SetWindowPosNoMove | SetWindowPosNoSize | SetWindowPosNoActivate | SetWindowPositionNoOwnerZOrder);
+    }
+
+    /// <summary>candidate 是否在 Z 序上位于 reference 之前（更靠上层）。</summary>
+    internal static bool PrecedesInZOrder(nint candidate, nint reference)
+    {
+        if (candidate == nint.Zero || reference == nint.Zero || candidate == reference)
+        {
+            return false;
+        }
+
+        // 反向沿 GW_HWNDNEXT 向下查找：正常状态下宿主紧贴盒子下方，1~2 步即可判定；
+        // 若向上遍历，最常见的“无需修复”分支反而要走完整条窗口链（每次数百次调用）。
+        for (var current = GetWindow(reference, GetWindowNext);
+             current != nint.Zero;
+             current = GetWindow(current, GetWindowNext))
+        {
+            if (current == candidate)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -442,6 +531,10 @@ public sealed class DesktopToolWindow
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint windowHandle);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessageW(string messageName);

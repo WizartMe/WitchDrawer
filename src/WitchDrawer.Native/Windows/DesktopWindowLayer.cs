@@ -58,13 +58,20 @@ public static class DesktopWindowLayer
             if (above != handle)
             {
                 // Inserting after a topmost predecessor would promote the box.
-                var insertion = above != 0 && (GetWindowLongPtrW(above, -20) & 8) != 0 ? (nint)(-2) : above;
+                var insertion = ResolveInsertAbove(above);
                 SetWindowPos(handle, insertion, 0, 0, 0, 0,
                     SetWindowPosNoMove | SetWindowPosNoSize | SetWindowPosNoActivate);
             }
             anchor = handle;
         }
     }
+
+    /// <summary>
+    /// 把盒子插到 above 之后（Z 序上方）时使用的 InsertAfter：前一个窗口是置顶窗口时
+    /// 不能排到它后面，否则盒子会被带进置顶层，因此改用 HWND_NOTOPMOST。
+    /// </summary>
+    internal static nint ResolveInsertAbove(nint above) =>
+        above != 0 && (GetWindowLongPtrW(above, -20) & 8) != 0 ? (nint)(-2) : above;
 
     private static void ClearOwner(nint handle)
     {

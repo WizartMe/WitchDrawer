@@ -90,6 +90,11 @@ public sealed partial class DesktopBoxManager : IBoxContentRefreshTarget
             {
                 _logger.Info("Foreground window monitoring is unavailable; Show Desktop layering may be limited.");
             }
+
+            // 显示桌面/外壳重整层时 Explorer 会把盒子连同同属主的兄弟盒子插到桌面宿主下面，
+            // 整组盒子随即被桌面表面盖住。这里只建立合并队列，由盒子在交互结束等明确时机触发；
+            // 不安装 WinEvent 钩子——事件驱动抬层会在用户点击过程中搬窗口，打断点击并造成闪烁。
+            InitializeDesktopLayerQueue(MaintainOwnedDesktopLayer);
         }
 
         // 盒子带 WS_EX_NOACTIVATE，点击不激活窗口，桌面点击不会产生 Deactivated

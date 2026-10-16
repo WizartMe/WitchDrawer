@@ -35,6 +35,16 @@ internal static class DesktopShellHost
         return worker != nint.Zero ? worker : shellWindow;
     }
 
+    /// <summary>
+    /// 承载桌面视图（SHELLDLL_DefView）的宿主窗口：Progman 持有视图时返回 Progman，
+    /// 视图迁移到 WorkerW 时返回该可见 WorkerW，两者都不存在时退回桌面壳窗口。
+    /// </summary>
+    internal static nint ResolveDesktopViewHost(nint shellWindow) => ResolveOwner(
+        shellWindow,
+        true,
+        HasDesktopView,
+        FindDesktopWorker);
+
     internal static bool HasDesktopView(nint window) =>
         FindWindowExW(window, nint.Zero, "SHELLDLL_DefView", null) != nint.Zero;
 
