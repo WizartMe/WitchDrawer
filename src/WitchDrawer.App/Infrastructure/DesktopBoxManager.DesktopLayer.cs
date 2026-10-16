@@ -63,46 +63,6 @@ public sealed partial class DesktopBoxManager
         }
     }
 
-    /// <summary>
-    /// 壳属主路径只建立合并队列，不安装 WinEvent 钩子：事件驱动抬层会在用户点击过程中搬动
-    /// 窗口（实测每秒一次、每次四个盒子），打断点击并造成闪烁。队列只在明确时机触发。
-    /// </summary>
-    private void InitializeDesktopLayerQueue(Action maintain)
-    {
-        _desktopLayerUpdates = new DesktopLayerUpdateQueue(
-            Dispatcher.CurrentDispatcher, maintain,
-            exception => _logger.Error(exception, "Failed to process desktop layer event."));
-    }
-
-    /// <summary>
-    /// 壳属主路径的层修复：外壳把盒子（连同同属主的兄弟盒子）插到桌面宿主下面时，
-    /// 把可见盒子放回宿主上方。由盒子在交互结束等明确时机触发，宿主没压住盒子时不调整。
-    /// </summary>
-    private void MaintainOwnedDesktopLayer()
-    {
-        if (_closing)
-        {
-            return;
-        }
-
-        var raised = 0;
-        foreach (var window in SnapshotDesktopLayerWindows(
-                     _windows.Values, window => window.Visibility, window => window.IsNativeWindowAlive))
-        {
-            if (window.RepairDesktopHostLayer())
-            {
-                raised++;
-            }
-        }
-
-        if (raised == 0)
-        {
-            return;
-        }
-
-        _logger.Info($"Desktop layer repair: raised {raised} box(es) above the desktop host.");
-    }
-
     private void DisposeDesktopLayer()
     {
         if (_desktopLayerMonitor is not null)

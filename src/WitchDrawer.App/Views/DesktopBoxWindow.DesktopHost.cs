@@ -131,22 +131,8 @@ public partial class DesktopBoxWindow
             return IsNativeWindowAlive;
         }
 
-        if (_nativeWindow?.TryAttachToDesktop() != true)
-        {
-            return false;
-        }
-
-        // 宿主重建/迁移后可能压住盒子（Explorer 重启）：只在这个明确边界补一次条件修复，
-        // 不挂 Z 序事件，避免在用户点击过程中搬动窗口。
-        _nativeWindow.RepairDesktopHostLayer();
-        return true;
+        return _nativeWindow?.TryAttachToDesktop() == true;
     }
-
-    /// <summary>
-    /// 桌面宿主 Z 序变化（显示桌面、Explorer 重启、交互结束后的外壳重整）后的层修复。
-    /// 不改变前台状态；宿主没有压住盒子时不会产生任何窗口调整。
-    /// </summary>
-    public bool RepairDesktopHostLayer() => _nativeWindow?.RepairDesktopHostLayer() == true;
 
     public void SetDesktopForeground(bool isForeground)
     {
@@ -237,54 +223,8 @@ public partial class DesktopBoxWindow
                 if (!_forceClose)
                 {
                     _nativeWindow?.RestoreDesktopOwnershipAfterMouseInput(_desktopIsForeground);
-                    // 交互结束时刻是外壳把整组盒子插到桌面宿主下面的高发时机，
-                    // 此时点击已完成，通知管理器统一抬层，避免盒子被桌面表面盖住。
-                    NotifyDesktopLayerChanged();
-                    QueueDelayedDesktopLayerRecheck();
                 }
             });
-    }
-
-    // 交互结束后外壳往往还会再重整一次层，单次通知可能落在它之前；只补一次复检。
-    private const int DesktopLayerRecheckDelayMilliseconds = 300;
-    private bool _desktopLayerRecheckQueued;
-
-    private void QueueDelayedDesktopLayerRecheck()
-    {
-        if (DesktopWindowLayer.IsEnabled || _forceClose || _desktopLayerRecheckQueued)
-        {
-            return;
-        }
-
-        _desktopLayerRecheckQueued = true;
-        FireAndForget.Run(
-            DelayedDesktopLayerRecheckAsync(),
-            ViewModel.Logger,
-            $"Failed to recheck the desktop layer for box {ViewModel.BoxId:N}.");
-    }
-
-    private async Task DelayedDesktopLayerRecheckAsync()
-    {
-        try
-        {
-            await Task.Delay(DesktopLayerRecheckDelayMilliseconds).ConfigureAwait(false);
-            if (Dispatcher.HasShutdownStarted)
-            {
-                return;
-            }
-
-            await Dispatcher.InvokeAsync(() =>
-            {
-                if (!_forceClose)
-                {
-                    NotifyDesktopLayerChanged();
-                }
-            });
-        }
-        finally
-        {
-            _desktopLayerRecheckQueued = false;
-        }
     }
 
     private void OnWindowPreviewMouseUpForDesktopOwnership(
